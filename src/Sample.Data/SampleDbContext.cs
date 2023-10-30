@@ -104,40 +104,71 @@ namespace Sample.Data
             base.OnModelCreating(modelBuilder);
         }
 
-
-        public override int SaveChanges()
+        private void SaveChanagesHandler(ChangeTracker tracker)
         {
-            var tracker = ChangeTracker;
-
             foreach (var entry in tracker.Entries())
             {
-                if (entry.Entity is FullAuditModel)
+                switch (entry.State)
                 {
-                    var referenceEntity = entry.Entity as FullAuditModel;
-                    switch (entry.State)
-                    {
-                        case EntityState.Added:
-                            referenceEntity.CreatedDate = DateTime.Now;
-                            if (string.IsNullOrWhiteSpace(referenceEntity.CreatedByUserId))
+                    case EntityState.Deleted:
+                        if (entry?.Entity is ISoftDeletable)
+                        {
+                            ((ISoftDeletable)entry.Entity).IsDeleted = true;
+                            if (entry.Entity is IAuditedModel)
                             {
-                                referenceEntity.CreatedByUserId = _systemUserId;
+                                var entity = entry.Entity as IAuditedModel;
+                                if (string.IsNullOrWhiteSpace(entity.LastModifiedUserId))
+                                    entity.LastModifiedUserId = _systemUserId;
+                                    entity.LastModifiedDate = DateTime.Now;
                             }
-                            break;
-                        case EntityState.Deleted:
-                        case EntityState.Modified:
-                            referenceEntity.LastModifiedDate = DateTime.Now;
-                            if (string.IsNullOrWhiteSpace(referenceEntity.LastModifiedUserId))
-                            {
-                                referenceEntity.LastModifiedUserId = _systemUserId;
-                            }
-                            break;
-                        default:
-                            break;
-                    }
+                            entry.State = EntityState.Modified;
+                        }
+                        break;
+                    case EntityState.Modified:
+                        if (entry.Entity is IAuditedModel)
+                        {
+                            var entity = entry.Entity as IAuditedModel;
+                            if (string.IsNullOrWhiteSpace(entity.LastModifiedUserId))
+                                entity.LastModifiedUserId = _systemUserId;
+                            entity.LastModifiedDate = DateTime.Now;
+                        }
+                        break;
+                    case EntityState.Added:
+                        if (entry.Entity is IAuditedModel)
+                        {
+                            var entity = entry.Entity as IAuditedModel;
+                            if (string.IsNullOrWhiteSpace(entity.CreatedByUserId))
+                                entity.CreatedByUserId = _systemUserId;
+                            entity.CreatedDate = DateTime.Now;
+                        }
+                        break;
+                    default:
+                        break;
                 }
             }
-
+        }
+        public override int SaveChanges()
+        {
+            SaveChanagesHandler(ChangeTracker);
             return base.SaveChanges();
         }
+
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            SaveChanagesHandler(ChangeTracker);
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            SaveChanagesHandler(ChangeTracker);
+            return base.SaveChangesAsync(cancellationToken);
+        }
+
+        public override Task<int> SaveChangesAsync(bool acceptAllChangesOnSuccess, CancellationToken cancellationToken = default)
+        {
+            SaveChanagesHandler(ChangeTracker);
+            return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }        
     }
 }
